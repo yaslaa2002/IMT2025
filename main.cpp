@@ -1,4 +1,4 @@
-
+ // Amaury bernardin Mari-camille memet Yasmine laarech Hamid Amrani 
 #include <ql/qldefines.hpp>
 #ifdef BOOST_MSVC
 #  include <ql/auto_link.hpp>
@@ -22,11 +22,24 @@
 #include <iostream>
 #include <chrono>
 
+#include <fstream>
+
 using namespace QuantLib;
 
-int main() {
-
+int main(int argc, char* argv[]) {
+    
     try {
+        bool write_results = argc > 1;
+        if (write_results) {
+            std::ofstream file(argv[1], std::ios::out | std::ios::app);
+            file.seekp(0, std::ios::end);
+            if (file.tellp() == 0) { // Only write header if the file is empty
+            file << "step,sample,c_err,c_npv,c_time,err,npv,time\n";
+            }
+            file.close();
+        }
+
+
 
         // modify the sample code below to suit your project
 
@@ -34,15 +47,16 @@ int main() {
         Date today = Date(24, February, 2022);
         Settings::instance().evaluationDate() = today;
 
-        Real underlying = 36;
+        Real x0_ = 36;
 
-        Handle<Quote> underlyingH(ext::make_shared<SimpleQuote>(underlying));
+        Handle<Quote> underlyingH(ext::make_shared<SimpleQuote>(x0_));
 
         DayCounter dayCounter = Actual365Fixed();
         Handle<YieldTermStructure> riskFreeRate(
             ext::make_shared<ZeroCurve>(std::vector<Date>{today, today + 6*Months},
                                         std::vector<Rate>{0.01, 0.015},
                                         dayCounter));
+
         Handle<BlackVolTermStructure> volatility(
             ext::make_shared<BlackVarianceCurve>(today,
                                                  std::vector<Date>{today+3*Months, today+6*Months},
@@ -71,6 +85,7 @@ int main() {
                                                  payoff, exercise);
 
         BarrierOption barrierOption(Barrier::UpIn, 40, 0, payoff, exercise);
+
 
         // Monte Carlo pricing and timing
 
