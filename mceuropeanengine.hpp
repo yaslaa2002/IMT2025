@@ -158,9 +158,8 @@ namespace QuantLib {
             ext::shared_ptr<GeneralizedBlackScholesProcess> BS_process =
                 ext::dynamic_pointer_cast<GeneralizedBlackScholesProcess>(this->process_);
 
-            // On ajoute un epsilon pour forcer l'interpolation
-            Time eps = 1.0e-2;
-            Time time_of_extraction = grid.back() + eps;
+            //Time eps = 1.0e-2;
+            Time time_of_extraction = grid.back();
 
             double strike = ext::dynamic_pointer_cast<StrikedTypePayoff>(
                 MCVanillaEngine<SingleVariate, RNG, S>::arguments_.payoff
