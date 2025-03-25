@@ -1,9 +1,3 @@
-/* -*- mode: c++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-/*
-  Fichier : mceuropeanengine.hpp
-  Groupe : ...
-*/
-
 #ifndef montecarlo_european_engine_hpp
 #define montecarlo_european_engine_hpp
 
@@ -14,13 +8,13 @@
 #include "constantblackscholesprocess.hpp"
 #include <iostream>
 
-// On inclut NOTRE utilitaire factorisé
+// On inclut NOTRE utilitaire factorisé (sans eps)
 #include "myconstutil.hpp"
 
 namespace QuantLib {
 
     // ------------------------------------------------------------------------
-    // EuropeanOption Monte Carlo (nouvelle version)
+    // EuropeanOption Monte Carlo (nouvelle version) sans offset
     // ------------------------------------------------------------------------
     template <class RNG = PseudoRandom, class S = Statistics>
     class MCEuropeanEngine_2 : public MCVanillaEngine<SingleVariate,RNG,S> {
@@ -127,53 +121,41 @@ namespace QuantLib {
     ext::shared_ptr<typename MCEuropeanEngine_2<RNG,S>::path_generator_type>
     MCEuropeanEngine_2<RNG,S>::pathGenerator() const {
 
-        Size dimensions = MCVanillaEngine<SingleVariate, RNG, S>::process_->factors();
+        Size dimensions = this->process_->factors();
         TimeGrid grid   = this->timeGrid();
 
         typename RNG::rsg_type generator =
             RNG::make_sequence_generator(dimensions * (grid.size()-1),
-                                         MCVanillaEngine<SingleVariate, RNG, S>::seed_);
+                                         this->seed_);
 
         if (this->ConstantParameters == true) {
-
             // FACTORISATION : On appelle makeConstantProcess(...)
             ext::shared_ptr<GeneralizedBlackScholesProcess> BS_process =
                 ext::dynamic_pointer_cast<GeneralizedBlackScholesProcess>(
                     this->process_
                 );
 
-            // On récupère le time_of_extraction
             Time time_of_extraction = grid.back();
 
-            // Récupération du strike
             double strike = ext::dynamic_pointer_cast<StrikedTypePayoff>(
-                MCVanillaEngine<SingleVariate, RNG, S>::arguments_.payoff
+                this->arguments_.payoff
             )->strike();
 
-            // On construit le cstProcess via la fonction factorisée
             auto cst_BS_process = makeConstantProcess(
                 BS_process,
                 time_of_extraction,
-                strike,
-                1.0e-2 // epsilon
+                strike
+                // plus de eps
             );
 
-            // Et on retourne le path_generator_type
-            return ext::shared_ptr<path_generator_type>(
-                new path_generator_type(
-                    cst_BS_process, grid, generator,
-                    MCVanillaEngine<SingleVariate, RNG, S>::brownianBridge_
-                )
+            return ext::make_shared<path_generator_type>(
+                cst_BS_process, grid, generator, this->brownianBridge_
             );
 
         } else {
             // Branche "non constant"
-            return ext::shared_ptr<path_generator_type>(
-                new path_generator_type(
-                    MCVanillaEngine<SingleVariate, RNG, S>::process_, 
-                    grid, generator,
-                    MCVanillaEngine<SingleVariate, RNG, S>::brownianBridge_
-                )
+            return ext::make_shared<path_generator_type>(
+                this->process_, grid, generator, this->brownianBridge_
             );
         }
     }
@@ -189,8 +171,8 @@ namespace QuantLib {
             );
         QL_REQUIRE(payoff, "non-plain payoff given");
 
-        boost::shared_ptr<GeneralizedBlackScholesProcess> process =
-            boost::dynamic_pointer_cast<GeneralizedBlackScholesProcess>(
+        ext::shared_ptr<GeneralizedBlackScholesProcess> process =
+            ext::dynamic_pointer_cast<GeneralizedBlackScholesProcess>(
                 this->process_
             );
         QL_REQUIRE(process, "Black-Scholes process required");
@@ -204,10 +186,6 @@ namespace QuantLib {
             disc
         );
     }
-
-    // ------------------------------------------------------------------------
-    //    MakeMCEuropeanEngine_2 Implementation
-    // ------------------------------------------------------------------------
 
     template <class RNG, class S>
     inline
@@ -308,10 +286,6 @@ namespace QuantLib {
                                       seed_,
                                       ConstantParameters));
     }
-
-    // ------------------------------------------------------------------------
-    //    EuropeanPathPricer_2 Implementation
-    // ------------------------------------------------------------------------
 
     inline EuropeanPathPricer_2::EuropeanPathPricer_2(Option::Type type,
                                                       Real strike,

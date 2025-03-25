@@ -46,7 +46,6 @@ int main(int argc, char* argv[]) {
             file.close();
         }
 
-        // Paramètres initiaux
         Calendar calendar = TARGET();
         Date today(24, February, 2022);
         Settings::instance().evaluationDate() = today;
@@ -72,7 +71,6 @@ int main(int argc, char* argv[]) {
             )
         );
 
-        // Process standard QL
         auto bsmProcess = ext::make_shared<BlackScholesProcess>(
             underlyingH, riskFreeRate, volatility
         );
@@ -278,8 +276,6 @@ int main(int argc, char* argv[]) {
                   << spacer << us / 1000000
                   << std::endl << std::endl;
 
-
-        // Fin
         return 0;
 
     } catch (std::exception& e) {

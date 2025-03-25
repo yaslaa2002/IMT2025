@@ -8,15 +8,16 @@
 #include <ql/processes/blackscholesprocess.hpp>
 #include <utility>
 
-// On inclut le helper factorisé
+// On inclut le helper factorisé (sans eps)
 #include "myconstutil.hpp"
 #include "constantblackscholesprocess.hpp"
 
 namespace QuantLib {
 
+    //! Pricing engine for barrier options using Monte Carlo simulation
     template <class RNG = PseudoRandom, class S = Statistics>
     class MCBarrierEngine_2 : public BarrierOption::engine,
-        public McSimulation<SingleVariate, RNG, S> {
+                              public McSimulation<SingleVariate, RNG, S> {
     public:
         typedef typename McSimulation<SingleVariate, RNG, S>::path_generator_type path_generator_type;
         typedef typename McSimulation<SingleVariate, RNG, S>::path_pricer_type    path_pricer_type;
@@ -60,30 +61,26 @@ namespace QuantLib {
 
             if (constantParameters) {
 
-                // FACTORISATION
                 auto BS_process = ext::dynamic_pointer_cast<GeneralizedBlackScholesProcess>(process_);
                 QL_REQUIRE(BS_process, "Need a GeneralizedBlackScholesProcess");
 
                 Time time_of_extraction = grid.back();
-                // On cast payoff => pour le strike
                 double strike = ext::dynamic_pointer_cast<StrikedTypePayoff>(arguments_.payoff)->strike();
 
+                // PAS DE + eps
                 auto cst_BS_process = makeConstantProcess(
                     BS_process,
                     time_of_extraction,
-                    strike,
-                    1.0e-2
+                    strike
                 );
 
-                return ext::shared_ptr<path_generator_type>(
-                    new path_generator_type(
-                        cst_BS_process, grid, gen, brownianBridge_
-                    )
+                return ext::make_shared<path_generator_type>(
+                    cst_BS_process, grid, gen, brownianBridge_
                 );
             }
             else {
-                return ext::shared_ptr<path_generator_type>(
-                    new path_generator_type(process_, grid, gen, brownianBridge_)
+                return ext::make_shared<path_generator_type>(
+                    process_, grid, gen, brownianBridge_
                 );
             }
         }
@@ -100,7 +97,8 @@ namespace QuantLib {
         BigNatural seed_;
     };
 
-    // Monte Carlo barrier-option engine factory
+
+    //! Monte Carlo barrier-option engine factory
     template <class RNG = PseudoRandom, class S = Statistics>
     class MakeMCBarrierEngine_2 {
     public:
@@ -142,7 +140,7 @@ namespace QuantLib {
         bool isBiased,
         BigNatural seed,
         bool constantParameters)
-        : McSimulation<SingleVariate, RNG, S>(antitheticVariate, false), 
+        : McSimulation<SingleVariate, RNG, S>(antitheticVariate, false),
           process_(std::move(process)),
           timeSteps_(timeSteps), timeStepsPerYear_(timeStepsPerYear),
           requiredSamples_(requiredSamples),
@@ -194,30 +192,28 @@ namespace QuantLib {
             discounts[i] = process_->riskFreeRate()->discount(grid[i]);
 
         if (isBiased_) {
-            return ext::shared_ptr<
-                typename MCBarrierEngine_2<RNG, S>::path_pricer_type>(
-                    new BiasedBarrierPathPricer(
-                        arguments_.barrierType,
-                        arguments_.barrier,
-                        arguments_.rebate,
-                        payoff->optionType(),
-                        payoff->strike(),
-                        discounts));
+            return ext::shared_ptr<typename MCBarrierEngine_2<RNG, S>::path_pricer_type>(
+                new BiasedBarrierPathPricer(
+                    arguments_.barrierType,
+                    arguments_.barrier,
+                    arguments_.rebate,
+                    payoff->optionType(),
+                    payoff->strike(),
+                    discounts));
         }
         else {
             PseudoRandom::ursg_type sequenceGen(grid.size() - 1,
                 PseudoRandom::urng_type(5));
-            return ext::shared_ptr<
-                typename MCBarrierEngine_2<RNG, S>::path_pricer_type>(
-                    new BarrierPathPricer(
-                        arguments_.barrierType,
-                        arguments_.barrier,
-                        arguments_.rebate,
-                        payoff->optionType(),
-                        payoff->strike(),
-                        discounts,
-                        process_,
-                        sequenceGen));
+            return ext::shared_ptr<typename MCBarrierEngine_2<RNG, S>::path_pricer_type>(
+                new BarrierPathPricer(
+                    arguments_.barrierType,
+                    arguments_.barrier,
+                    arguments_.rebate,
+                    payoff->optionType(),
+                    payoff->strike(),
+                    discounts,
+                    process_,
+                    sequenceGen));
         }
     }
 
@@ -312,17 +308,17 @@ namespace QuantLib {
             "number of steps not given");
         QL_REQUIRE(steps_ == Null<Size>() || stepsPerYear_ == Null<Size>(),
             "number of steps overspecified");
-        return ext::shared_ptr<PricingEngine>(new
-            MCBarrierEngine_2<RNG, S>(process_,
-                                      steps_,
-                                      stepsPerYear_,
-                                      brownianBridge_,
-                                      antithetic_,
-                                      samples_, tolerance_,
-                                      maxSamples_,
-                                      biased_,
-                                      seed_,
-                                      constantParameters_));
+        return ext::make_shared<MCBarrierEngine_2<RNG, S>>(process_,
+                                                           steps_,
+                                                           stepsPerYear_,
+                                                           brownianBridge_,
+                                                           antithetic_,
+                                                           samples_,
+                                                           tolerance_,
+                                                           maxSamples_,
+                                                           biased_,
+                                                           seed_,
+                                                           constantParameters_);
     }
 
 } // namespace QuantLib

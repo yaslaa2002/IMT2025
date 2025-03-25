@@ -8,32 +8,26 @@
 
 namespace QuantLib {
 
-    /*! 
-      \brief Construit un ConstantBlackScholesProcess en ajoutant un epsilon 
-             au temps final pour forcer une interpolation (vol, taux...).
+    /*!
+      \brief Construit un ConstantBlackScholesProcess **sans** offset sur la maturité.
 
-      \param BS_process  Un GeneralizedBlackScholesProcess (ex: dynamic_pointer_cast)
-      \param time_of_extraction  Le dernier point de la TimeGrid (souvent grid.back())
-      \param strike     Le strike (extrait du payoff)
-      \param eps        Décalage temporel (default 1e-2)
+      \param BS_process        Un GeneralizedBlackScholesProcess
+      \param time_of_extraction  Le dernier point de la grille (grid.back())
+      \param strike             Le strike (extrait du payoff)
     */
     inline ext::shared_ptr<ConstantBlackScholesProcess>
     makeConstantProcess(
         const ext::shared_ptr<GeneralizedBlackScholesProcess>& BS_process,
         Time time_of_extraction,
-        Real strike,
-        Real eps = 1.0e-2
+        Real strike
     ) {
-        // On ajoute l'epsilon
-        Time t = time_of_extraction + eps;
-
-        // On extrait taux, dividende, vol
-        Rate riskFreeRate_ = BS_process->riskFreeRate()->zeroRate(t, Continuous);
-        Rate dividend_     = BS_process->dividendYield()->zeroRate(t, Continuous);
-        Volatility vol_    = BS_process->blackVolatility()->blackVol(t, strike);
+        // On extrait taux, dividende, vol au temps exact
+        Rate riskFreeRate_ = BS_process->riskFreeRate()->zeroRate(time_of_extraction, Continuous);
+        Rate dividend_     = BS_process->dividendYield()->zeroRate(time_of_extraction, Continuous);
+        Volatility vol_    = BS_process->blackVolatility()->blackVol(time_of_extraction, strike);
         Real x0_           = BS_process->x0();
 
-        // On construit le ConstantBlackScholesProcess
+        // On renvoie le ConstantBlackScholesProcess
         return ext::make_shared<ConstantBlackScholesProcess>(
             x0_, dividend_, riskFreeRate_, vol_
         );
