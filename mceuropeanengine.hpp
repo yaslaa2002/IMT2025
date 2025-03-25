@@ -1,11 +1,7 @@
 /* -*- mode: c++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 /*
- Copyright (C) 2000-2023 ...
- (Licence QuantLib, etc.)
-*/
-
-/*! \file mceuropeanengine.hpp
-    \brief Monte Carlo European option engine
+  Fichier : mceuropeanengine.hpp
+  Groupe : ...
 */
 
 #ifndef montecarlo_european_engine_hpp
@@ -18,14 +14,14 @@
 #include "constantblackscholesprocess.hpp"
 #include <iostream>
 
+// On inclut NOTRE utilitaire factorisé
+#include "myconstutil.hpp"
+
 namespace QuantLib {
 
-    //! European option pricing engine using Monte Carlo simulation
-    /*! \ingroup vanillaengines
-
-        \test the correctness of the returned value is tested by
-              checking it against analytic results.
-    */
+    // ------------------------------------------------------------------------
+    // EuropeanOption Monte Carlo (nouvelle version)
+    // ------------------------------------------------------------------------
     template <class RNG = PseudoRandom, class S = Statistics>
     class MCEuropeanEngine_2 : public MCVanillaEngine<SingleVariate,RNG,S> {
       public:
@@ -139,42 +135,45 @@ namespace QuantLib {
                                          MCVanillaEngine<SingleVariate, RNG, S>::seed_);
 
         if (this->ConstantParameters == true) {
-            // --- Branch "constant" : on ajoute un petit epsilon ---
+
+            // FACTORISATION : On appelle makeConstantProcess(...)
             ext::shared_ptr<GeneralizedBlackScholesProcess> BS_process =
-                ext::dynamic_pointer_cast<GeneralizedBlackScholesProcess>(this->process_);
+                ext::dynamic_pointer_cast<GeneralizedBlackScholesProcess>(
+                    this->process_
+                );
 
-            // On ajoute un epsilon pour forcer l'interpolation
-            Time eps = 1.0e-2;
-            Time time_of_extraction = grid.back() + eps;
+            // On récupère le time_of_extraction
+            Time time_of_extraction = grid.back();
 
+            // Récupération du strike
             double strike = ext::dynamic_pointer_cast<StrikedTypePayoff>(
                 MCVanillaEngine<SingleVariate, RNG, S>::arguments_.payoff
             )->strike();
 
-            double riskFreeRate_ =
-                BS_process->riskFreeRate()->zeroRate(time_of_extraction, Continuous);
-            double dividend_ =
-                BS_process->dividendYield()->zeroRate(time_of_extraction, Continuous);
-
-            double volatility_ =
-                BS_process->blackVolatility()->blackVol(time_of_extraction, strike);
-
-            double x0_ = BS_process->x0();
-
-            ext::shared_ptr<ConstantBlackScholesProcess> cstProcess(
-                new ConstantBlackScholesProcess(x0_, dividend_, riskFreeRate_, volatility_)
+            // On construit le cstProcess via la fonction factorisée
+            auto cst_BS_process = makeConstantProcess(
+                BS_process,
+                time_of_extraction,
+                strike,
+                1.0e-2 // epsilon
             );
 
-            return ext::make_shared<path_generator_type>(
-                cstProcess, grid, generator, MCVanillaEngine<SingleVariate, RNG, S>::brownianBridge_
+            // Et on retourne le path_generator_type
+            return ext::shared_ptr<path_generator_type>(
+                new path_generator_type(
+                    cst_BS_process, grid, generator,
+                    MCVanillaEngine<SingleVariate, RNG, S>::brownianBridge_
+                )
             );
+
         } else {
-            // --- Branch "non constant" : on utilise grid.back() sans epsilon ---
-            return ext::make_shared<path_generator_type>(
-                MCVanillaEngine<SingleVariate, RNG, S>::process_,
-                grid,
-                generator,
-                MCVanillaEngine<SingleVariate, RNG, S>::brownianBridge_
+            // Branche "non constant"
+            return ext::shared_ptr<path_generator_type>(
+                new path_generator_type(
+                    MCVanillaEngine<SingleVariate, RNG, S>::process_, 
+                    grid, generator,
+                    MCVanillaEngine<SingleVariate, RNG, S>::brownianBridge_
+                )
             );
         }
     }
@@ -238,7 +237,8 @@ namespace QuantLib {
     template <class RNG, class S>
     inline MakeMCEuropeanEngine_2<RNG,S>&
     MakeMCEuropeanEngine_2<RNG,S>::withSamples(Size samples) {
-        QL_REQUIRE(tolerance_ == Null<Real>(), "tolerance already set");
+        QL_REQUIRE(tolerance_ == Null<Real>(),
+                   "tolerance already set");
         samples_ = samples;
         return *this;
     }
@@ -246,8 +246,11 @@ namespace QuantLib {
     template <class RNG, class S>
     inline MakeMCEuropeanEngine_2<RNG,S>&
     MakeMCEuropeanEngine_2<RNG,S>::withAbsoluteTolerance(Real tolerance) {
-        QL_REQUIRE(samples_ == Null<Size>(), "number of samples already set");
-        QL_REQUIRE(RNG::allowsErrorEstimate, "chosen random generator policy does not allow an error estimate");
+        QL_REQUIRE(samples_ == Null<Size>(),
+                   "number of samples already set");
+        QL_REQUIRE(RNG::allowsErrorEstimate,
+                   "chosen random generator policy "
+                   "does not allow an error estimate");
         tolerance_ = tolerance;
         return *this;
     }
@@ -290,12 +293,20 @@ namespace QuantLib {
     template <class RNG, class S>
     inline
     MakeMCEuropeanEngine_2<RNG,S>::operator boost::shared_ptr<PricingEngine>() const {
-        QL_REQUIRE(steps_ != Null<Size>() || stepsPerYear_ != Null<Size>(), "number of steps not given");
-        QL_REQUIRE(steps_ == Null<Size>() || stepsPerYear_ == Null<Size>(), "number of steps overspecified");
-        return boost::shared_ptr<PricingEngine>(new MCEuropeanEngine_2<RNG,S>(
-            process_, steps_, stepsPerYear_, brownianBridge_,
-            antithetic_, samples_, tolerance_, maxSamples_,
-            seed_, ConstantParameters));
+        QL_REQUIRE(steps_ != Null<Size>() || stepsPerYear_ != Null<Size>(),
+                   "number of steps not given");
+        QL_REQUIRE(steps_ == Null<Size>() || stepsPerYear_ == Null<Size>(),
+                   "number of steps overspecified");
+        return boost::shared_ptr<PricingEngine>(new
+            MCEuropeanEngine_2<RNG,S>(process_,
+                                      steps_,
+                                      stepsPerYear_,
+                                      brownianBridge_,
+                                      antithetic_,
+                                      samples_, tolerance_,
+                                      maxSamples_,
+                                      seed_,
+                                      ConstantParameters));
     }
 
     // ------------------------------------------------------------------------
@@ -306,7 +317,8 @@ namespace QuantLib {
                                                       Real strike,
                                                       DiscountFactor discount)
     : payoff_(type, strike), discount_(discount) {
-        QL_REQUIRE(strike >= 0.0, "strike less than zero not allowed");
+        QL_REQUIRE(strike>=0.0,
+                   "strike less than zero not allowed");
     }
 
     inline Real EuropeanPathPricer_2::operator()(const Path& path) const {

@@ -1,28 +1,3 @@
-/* -*- mode: c++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-
-/*
- Copyright (C) 2003, 2004 Neil Firth
- Copyright (C) 2003, 2004 Ferdinando Ametrano
- Copyright (C) 2003, 2004, 2005, 2007, 2008 StatPro Italia srl
-
- This file is part of QuantLib, a free-software/open-source library
- for financial quantitative analysts and developers - http://quantlib.org/
-
- QuantLib is free software: you can redistribute it and/or modify it
- under the terms of the QuantLib license.  You should have received a
- copy of the license along with this program; if not, please email
- <quantlib-dev@lists.sf.net>. The license is also available online at
- <http://quantlib.org/license.shtml>.
-
- This program is distributed in the hope that it will be useful, but WITHOUT
- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- FOR A PARTICULAR PURPOSE.  See the license for more details.
-*/
-
-/*! \file mcbarrierengine.hpp
-    \brief Monte Carlo barrier option engines
-*/
-
 #ifndef mc_barrier_engines_hpp
 #define mc_barrier_engines_hpp
 
@@ -33,54 +8,34 @@
 #include <ql/processes/blackscholesprocess.hpp>
 #include <utility>
 
+// On inclut le helper factorisé
+#include "myconstutil.hpp"
+#include "constantblackscholesprocess.hpp"
+
 namespace QuantLib {
 
-    //! Pricing engine for barrier options using Monte Carlo simulation
-    /*! Uses the Brownian-bridge correction for the barrier found in
-        <i>
-        Going to Extremes: Correcting Simulation Bias in Exotic
-        Option Valuation - D.R. Beaglehole, P.H. Dybvig and G. Zhou
-        Financial Analysts Journal; Jan/Feb 1997; 53, 1. pg. 62-68
-        </i>
-        and
-        <i>
-        Simulating path-dependent options: A new approach -
-        M. El Babsiri and G. Noel
-        Journal of Derivatives; Winter 1998; 6, 2; pg. 65-83
-        </i>
-        \ingroup barrierengines
-        \test the correctness of the returned value is tested by
-              reproducing results available in literature.
-    */
     template <class RNG = PseudoRandom, class S = Statistics>
     class MCBarrierEngine_2 : public BarrierOption::engine,
         public McSimulation<SingleVariate, RNG, S> {
     public:
-        typedef
-            typename McSimulation<SingleVariate, RNG, S>::path_generator_type
-            path_generator_type;
-        typedef typename McSimulation<SingleVariate, RNG, S>::path_pricer_type
-            path_pricer_type;
-        typedef typename McSimulation<SingleVariate, RNG, S>::stats_type
-            stats_type;
-        // constructor
-        MCBarrierEngine_2(ext::shared_ptr<GeneralizedBlackScholesProcess> process,
-            Size timeSteps,
-            Size timeStepsPerYear,
-            bool brownianBridge,
-            bool antitheticVariate,
-            Size requiredSamples,
-            Real requiredTolerance,
-            Size maxSamples,
-            bool isBiased,
-            BigNatural seed,
-            bool constantParameters);
+        typedef typename McSimulation<SingleVariate, RNG, S>::path_generator_type path_generator_type;
+        typedef typename McSimulation<SingleVariate, RNG, S>::path_pricer_type    path_pricer_type;
+        typedef typename McSimulation<SingleVariate, RNG, S>::stats_type          stats_type;
 
+        MCBarrierEngine_2(ext::shared_ptr<GeneralizedBlackScholesProcess> process,
+                          Size timeSteps,
+                          Size timeStepsPerYear,
+                          bool brownianBridge,
+                          bool antitheticVariate,
+                          Size requiredSamples,
+                          Real requiredTolerance,
+                          Size maxSamples,
+                          bool isBiased,
+                          BigNatural seed,
+                          bool constantParameters);
 
     private:
         bool constantParameters;
-
-
 
         void calculate() const override {
             Real spot = process_->x0();
@@ -103,35 +58,38 @@ namespace QuantLib {
             typename RNG::rsg_type gen =
                 RNG::make_sequence_generator(grid.size() - 1, seed_);
 
-            //bool constantParameters_=true;
             if (constantParameters) {
-                ext::shared_ptr<GeneralizedBlackScholesProcess> BS_process = ext::dynamic_pointer_cast<GeneralizedBlackScholesProcess>(this->process_); //conversion to a dynamic pointer
-                
 
-                // Get the parameters from the ConstantBlackScholesProcess class
+                // FACTORISATION
+                auto BS_process = ext::dynamic_pointer_cast<GeneralizedBlackScholesProcess>(process_);
+                QL_REQUIRE(BS_process, "Need a GeneralizedBlackScholesProcess");
+
                 Time time_of_extraction = grid.back();
+                // On cast payoff => pour le strike
                 double strike = ext::dynamic_pointer_cast<StrikedTypePayoff>(arguments_.payoff)->strike();
-                double riskFreeRate_ = BS_process->riskFreeRate()->zeroRate(time_of_extraction, Continuous);
-                double dividend_ = BS_process->dividendYield()->zeroRate(time_of_extraction, Continuous);
-                double volatility_ = BS_process->blackVolatility()->blackVol(time_of_extraction, strike);
-                double underlyingValue_ = BS_process->x0();
 
+                auto cst_BS_process = makeConstantProcess(
+                    BS_process,
+                    time_of_extraction,
+                    strike,
+                    1.0e-2
+                );
 
-                // We instanciate a constantBSProcess named cst_BS_process with the parameters
-                ext::shared_ptr<ConstantBlackScholesProcess> cst_BS_process(new ConstantBlackScholesProcess(underlyingValue_,  dividend_, riskFreeRate_, volatility_));
-
-                // We return a new path generator with constantBSProcess
-                return ext::shared_ptr<path_generator_type>(new path_generator_type(cst_BS_process, grid, gen, brownianBridge_));
-
+                return ext::shared_ptr<path_generator_type>(
+                    new path_generator_type(
+                        cst_BS_process, grid, gen, brownianBridge_
+                    )
+                );
             }
-
-            else{ // We return the classical path generator 
-                return ext::shared_ptr<path_generator_type>(new path_generator_type(process_, grid, gen, brownianBridge_));
+            else {
+                return ext::shared_ptr<path_generator_type>(
+                    new path_generator_type(process_, grid, gen, brownianBridge_)
+                );
             }
-
         }
 
         ext::shared_ptr<path_pricer_type> pathPricer() const override;
+
         // data members
         ext::shared_ptr<GeneralizedBlackScholesProcess> process_;
         Size timeSteps_, timeStepsPerYear_;
@@ -142,8 +100,7 @@ namespace QuantLib {
         BigNatural seed_;
     };
 
-
-    //! Monte Carlo barrier-option engine factory
+    // Monte Carlo barrier-option engine factory
     template <class RNG = PseudoRandom, class S = Statistics>
     class MakeMCBarrierEngine_2 {
     public:
@@ -159,7 +116,6 @@ namespace QuantLib {
         MakeMCBarrierEngine_2& withBias(bool b = true);
         MakeMCBarrierEngine_2& withSeed(BigNatural seed);
         MakeMCBarrierEngine_2& withConstantParameters(bool constantParameters);
-        // conversion to pricing engine
         operator ext::shared_ptr<PricingEngine>() const;
     private:
         ext::shared_ptr<GeneralizedBlackScholesProcess> process_;
@@ -186,10 +142,14 @@ namespace QuantLib {
         bool isBiased,
         BigNatural seed,
         bool constantParameters)
-        : McSimulation<SingleVariate, RNG, S>(antitheticVariate, false), process_(std::move(process)),
-        timeSteps_(timeSteps), timeStepsPerYear_(timeStepsPerYear), requiredSamples_(requiredSamples),
-        maxSamples_(maxSamples), requiredTolerance_(requiredTolerance), isBiased_(isBiased),
-        brownianBridge_(brownianBridge), seed_(seed), constantParameters(constantParameters) {
+        : McSimulation<SingleVariate, RNG, S>(antitheticVariate, false), 
+          process_(std::move(process)),
+          timeSteps_(timeSteps), timeStepsPerYear_(timeStepsPerYear),
+          requiredSamples_(requiredSamples),
+          maxSamples_(maxSamples), requiredTolerance_(requiredTolerance),
+          isBiased_(isBiased), brownianBridge_(brownianBridge),
+          seed_(seed), constantParameters(constantParameters) 
+    {
         QL_REQUIRE(timeSteps != Null<Size>() ||
             timeStepsPerYear != Null<Size>(),
             "no time steps provided");
@@ -197,11 +157,9 @@ namespace QuantLib {
             timeStepsPerYear == Null<Size>(),
             "both time steps and time steps per year were provided");
         QL_REQUIRE(timeSteps != 0,
-            "timeSteps must be positive, " << timeSteps <<
-            " not allowed");
+            "timeSteps must be positive");
         QL_REQUIRE(timeStepsPerYear != 0,
-            "timeStepsPerYear must be positive, " << timeStepsPerYear <<
-            " not allowed");
+            "timeStepsPerYear must be positive");
         registerWith(process_);
     }
 
@@ -221,11 +179,11 @@ namespace QuantLib {
         }
     }
 
-
     template <class RNG, class S>
     inline
-        ext::shared_ptr<typename MCBarrierEngine_2<RNG, S>::path_pricer_type>
-        MCBarrierEngine_2<RNG, S>::pathPricer() const {
+    ext::shared_ptr<typename MCBarrierEngine_2<RNG, S>::path_pricer_type>
+    MCBarrierEngine_2<RNG, S>::pathPricer() const {
+
         ext::shared_ptr<PlainVanillaPayoff> payoff =
             ext::dynamic_pointer_cast<PlainVanillaPayoff>(arguments_.payoff);
         QL_REQUIRE(payoff, "non-plain payoff given");
@@ -235,7 +193,6 @@ namespace QuantLib {
         for (Size i = 0; i < grid.size(); i++)
             discounts[i] = process_->riskFreeRate()->discount(grid[i]);
 
-        // do this with template parameters?
         if (isBiased_) {
             return ext::shared_ptr<
                 typename MCBarrierEngine_2<RNG, S>::path_pricer_type>(
@@ -269,7 +226,7 @@ namespace QuantLib {
     inline MakeMCBarrierEngine_2<RNG, S>::MakeMCBarrierEngine_2(
         ext::shared_ptr<GeneralizedBlackScholesProcess> process)
         : process_(std::move(process)), steps_(Null<Size>()), stepsPerYear_(Null<Size>()),
-        samples_(Null<Size>()), maxSamples_(Null<Size>()), tolerance_(Null<Real>()) {}
+          samples_(Null<Size>()), maxSamples_(Null<Size>()), tolerance_(Null<Real>()) {}
 
     template <class RNG, class S>
     inline MakeMCBarrierEngine_2<RNG, S>&
@@ -350,24 +307,24 @@ namespace QuantLib {
 
     template <class RNG, class S>
     inline
-        MakeMCBarrierEngine_2<RNG, S>::operator ext::shared_ptr<PricingEngine>() const {
+    MakeMCBarrierEngine_2<RNG, S>::operator ext::shared_ptr<PricingEngine>() const {
         QL_REQUIRE(steps_ != Null<Size>() || stepsPerYear_ != Null<Size>(),
             "number of steps not given");
         QL_REQUIRE(steps_ == Null<Size>() || stepsPerYear_ == Null<Size>(),
             "number of steps overspecified");
         return ext::shared_ptr<PricingEngine>(new
             MCBarrierEngine_2<RNG, S>(process_,
-                steps_,
-                stepsPerYear_,
-                brownianBridge_,
-                antithetic_,
-                samples_, tolerance_,
-                maxSamples_,
-                biased_,
-                seed_,
-                constantParameters_));
+                                      steps_,
+                                      stepsPerYear_,
+                                      brownianBridge_,
+                                      antithetic_,
+                                      samples_, tolerance_,
+                                      maxSamples_,
+                                      biased_,
+                                      seed_,
+                                      constantParameters_));
     }
-}
 
+} // namespace QuantLib
 
 #endif
